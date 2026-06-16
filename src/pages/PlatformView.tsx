@@ -43,7 +43,7 @@ type ClaudeSourceFilter = "all" | "user" | "plugin";
 export function PlatformView() {
   const { agentId } = useParams<{ agentId: string }>();
   const { t, i18n } = useTranslation();
-  const agents = usePlatformStore((state) => state.agents);
+  const agents = usePlatformStore((state) => state.allAgents);
   const scanGeneration = usePlatformStore((state) => state.scanGeneration ?? 0);
 
   const skillsByAgent = useSkillStore((state) => state.skillsByAgent);

@@ -17,3 +17,19 @@ export function isEnabledInstallTargetAgent(
 ): boolean {
   return isInstallTargetAgent(agent) && agent.is_enabled;
 }
+
+/**
+ * Apply the platform whitelist to a full agent list.
+ * - `whitelist === null` means "not loaded yet" → show all (safe pre-load default).
+ * - Otherwise: non-install-target agents (central/obsidian) always pass;
+ *   install-target agents pass only when their id is in the whitelist
+ *   (empty array → no platforms shown).
+ */
+export function filterAgentsByWhitelist(
+  agents: AgentWithStatus[],
+  whitelist: string[] | null
+): AgentWithStatus[] {
+  if (whitelist === null) return agents;
+  const allowed = new Set(whitelist);
+  return agents.filter((a) => !isInstallTargetAgent(a) || allowed.has(a.id));
+}

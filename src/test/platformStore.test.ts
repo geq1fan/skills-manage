@@ -8,6 +8,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { usePlatformStore } from "../stores/platformStore";
+import { useSettingsStore } from "../stores/settingsStore";
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -48,12 +49,14 @@ describe("platformStore", () => {
     // Reset store to initial state before each test
     usePlatformStore.setState({
       agents: [],
+      allAgents: [],
       skillsByAgent: {},
       isLoading: false,
       isRefreshing: false,
       scanGeneration: 0,
       error: null,
     });
+    useSettingsStore.setState({ platformWhitelist: null });
     vi.clearAllMocks();
   });
 
@@ -202,5 +205,45 @@ describe("platformStore", () => {
     expect(state.isLoading).toBe(false);
     expect(state.isRefreshing).toBe(false);
     expect(state.scanGeneration).toBe(2);
+  });
+
+  // ── Platform Whitelist filtering ──────────────────────────────────────────
+
+  it("hides non-whitelisted install-target agents after initialize", async () => {
+    useSettingsStore.setState({ platformWhitelist: [] }); // show none
+    const all: AgentWithStatus[] = [
+      mockAgents[0], // claude-code (install target)
+      { ...mockAgents[0], id: "cursor", display_name: "Cursor" },
+      mockAgents[1], // central (non-install-target, always kept)
+    ];
+
+    vi.mocked(invoke).mockResolvedValueOnce(all).mockResolvedValueOnce(mockScanResult);
+
+    await usePlatformStore.getState().initialize();
+
+    const state = usePlatformStore.getState();
+    expect(state.allAgents).toEqual(all);
+    expect(state.agents.map((a) => a.id)).toEqual(["central"]);
+  });
+
+  it("reapplyWhitelist recomputes the visible list from cached agents", async () => {
+    // Load with no whitelist (null → show all)
+    vi.mocked(invoke)
+      .mockResolvedValueOnce(mockAgents)
+      .mockResolvedValueOnce(mockScanResult);
+    await usePlatformStore.getState().initialize();
+    expect(usePlatformStore.getState().agents).toEqual(mockAgents);
+
+    // Restrict to claude-code only → reapply hides central? No: central is a
+    // non-install-target so it is always kept; only install-targets are gated.
+    usePlatformStore.getState().reapplyWhitelist(["claude-code"]);
+    expect(usePlatformStore.getState().agents.map((a) => a.id)).toEqual([
+      "claude-code",
+      "central",
+    ]);
+
+    // Back to show-all (null)
+    usePlatformStore.getState().reapplyWhitelist(null);
+    expect(usePlatformStore.getState().agents).toEqual(mockAgents);
   });
 });

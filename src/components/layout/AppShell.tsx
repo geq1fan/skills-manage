@@ -6,6 +6,7 @@ import { GlobalSearchDialog } from "./GlobalSearchDialog";
 import { usePlatformStore } from "@/stores/platformStore";
 import { useCentralSkillsStore } from "@/stores/centralSkillsStore";
 import { useDiscoverStore } from "@/stores/discoverStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 /**
  * Top-level app shell: TopBar + icon sidebar + scrollable main content area.
@@ -22,7 +23,9 @@ export function AppShell() {
   const rescanDiscoverFromDisk = useDiscoverStore((s) => s.rescanFromDisk);
 
   useEffect(() => {
-    initialize();
+    // Load the platform whitelist before the first scan so the sidebar
+    // reflects the configured visibility on first paint.
+    useSettingsStore.getState().loadPlatformWhitelist().finally(() => initialize());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

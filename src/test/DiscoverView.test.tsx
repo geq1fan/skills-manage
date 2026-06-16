@@ -321,6 +321,7 @@ function buildDiscoverStoreState(overrides = {}) {
 function buildPlatformStoreState(overrides = {}) {
   return {
     agents: mockAgents,
+    allAgents: mockAgents,
     skillsByAgent: {},
     isLoading: false,
     isRefreshing: false,
@@ -328,6 +329,7 @@ function buildPlatformStoreState(overrides = {}) {
     initialize: vi.fn(),
     rescan: mockRescan,
     refreshCounts: mockRefreshPlatformCounts,
+    reapplyWhitelist: vi.fn(),
     ...overrides,
   };
 }

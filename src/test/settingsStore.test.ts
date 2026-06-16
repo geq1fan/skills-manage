@@ -53,6 +53,7 @@ describe("settingsStore", () => {
       githubPat: "",
       isLoadingGitHubPat: false,
       isSavingGitHubPat: false,
+      platformWhitelist: null,
     });
     vi.clearAllMocks();
   });
@@ -376,5 +377,55 @@ describe("settingsStore", () => {
     });
     expect(useSettingsStore.getState().githubPat).toBe("");
     expect(useSettingsStore.getState().isSavingGitHubPat).toBe(false);
+  });
+
+  // ── Platform Whitelist ────────────────────────────────────────────────────
+
+  it("loadPlatformWhitelist reads the saved platform_whitelist setting", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(JSON.stringify(["claude-code", "cursor"]));
+
+    await useSettingsStore.getState().loadPlatformWhitelist();
+
+    expect(invoke).toHaveBeenCalledWith("get_setting", { key: "platform_whitelist" });
+    expect(useSettingsStore.getState().platformWhitelist).toEqual([
+      "claude-code",
+      "cursor",
+    ]);
+  });
+
+  it("loadPlatformWhitelist treats an absent setting as empty (show none)", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(null);
+
+    await useSettingsStore.getState().loadPlatformWhitelist();
+
+    expect(useSettingsStore.getState().platformWhitelist).toEqual([]);
+  });
+
+  it("loadPlatformWhitelist tolerates corrupt JSON", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce("{not json");
+
+    await useSettingsStore.getState().loadPlatformWhitelist();
+
+    expect(useSettingsStore.getState().platformWhitelist).toEqual([]);
+  });
+
+  it("loadPlatformWhitelist tolerates a non-array payload", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(JSON.stringify({ oops: true }));
+
+    await useSettingsStore.getState().loadPlatformWhitelist();
+
+    expect(useSettingsStore.getState().platformWhitelist).toEqual([]);
+  });
+
+  it("setPlatformWhitelist persists JSON and updates state", async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+
+    await useSettingsStore.getState().setPlatformWhitelist(["claude-code"]);
+
+    expect(invoke).toHaveBeenCalledWith("set_setting", {
+      key: "platform_whitelist",
+      value: JSON.stringify(["claude-code"]),
+    });
+    expect(useSettingsStore.getState().platformWhitelist).toEqual(["claude-code"]);
   });
 });

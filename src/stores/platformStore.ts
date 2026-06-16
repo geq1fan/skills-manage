@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { invoke, isTauriRuntime } from "@/lib/tauri";
 import { AgentWithStatus, ScanResult } from "@/types";
+import { filterAgentsByWhitelist } from "@/lib/agents";
+import { useSettingsStore } from "./settingsStore";
 
 const BROWSER_FIXTURE_AGENTS: AgentWithStatus[] = [
   {
@@ -42,9 +44,15 @@ const BROWSER_FIXTURE_COUNTS: ScanResult = {
   },
 };
 
+/** Derive the visible (whitelist-filtered) agent list from the full list. */
+function visibleAgents(allAgents: AgentWithStatus[]): AgentWithStatus[] {
+  return filterAgentsByWhitelist(allAgents, useSettingsStore.getState().platformWhitelist);
+}
+
 // ─── State ────────────────────────────────────────────────────────────────────
 
 interface PlatformState {
+  allAgents: AgentWithStatus[];
   agents: AgentWithStatus[];
   skillsByAgent: Record<string, number>;
   isLoading: boolean;
@@ -56,11 +64,13 @@ interface PlatformState {
   initialize: () => Promise<void>;
   rescan: () => Promise<void>;
   refreshCounts: () => Promise<void>;
+  reapplyWhitelist: (whitelist: string[] | null) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const usePlatformStore = create<PlatformState>((set) => ({
+  allAgents: [],
   agents: [],
   skillsByAgent: {},
   isLoading: false,
@@ -76,7 +86,8 @@ export const usePlatformStore = create<PlatformState>((set) => ({
     set({ isLoading: true, error: null });
     if (!isTauriRuntime()) {
       set((state) => ({
-        agents: BROWSER_FIXTURE_AGENTS,
+        allAgents: BROWSER_FIXTURE_AGENTS,
+        agents: visibleAgents(BROWSER_FIXTURE_AGENTS),
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isLoading: false,
         scanGeneration: (state.scanGeneration ?? 0) + 1,
@@ -84,12 +95,13 @@ export const usePlatformStore = create<PlatformState>((set) => ({
       return;
     }
     try {
-      const [agents, scanResult] = await Promise.all([
+      const [fetched, scanResult] = await Promise.all([
         invoke<AgentWithStatus[]>("get_agents"),
         invoke<ScanResult>("scan_all_skills"),
       ]);
       set((state) => ({
-        agents,
+        allAgents: fetched,
+        agents: visibleAgents(fetched),
         skillsByAgent: scanResult.skills_by_agent,
         isLoading: false,
         scanGeneration: (state.scanGeneration ?? 0) + 1,
@@ -107,7 +119,8 @@ export const usePlatformStore = create<PlatformState>((set) => ({
     set({ isLoading: true, error: null });
     if (!isTauriRuntime()) {
       set((state) => ({
-        agents: BROWSER_FIXTURE_AGENTS,
+        allAgents: BROWSER_FIXTURE_AGENTS,
+        agents: visibleAgents(BROWSER_FIXTURE_AGENTS),
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isLoading: false,
         scanGeneration: (state.scanGeneration ?? 0) + 1,
@@ -115,12 +128,13 @@ export const usePlatformStore = create<PlatformState>((set) => ({
       return;
     }
     try {
-      const [agents, scanResult] = await Promise.all([
+      const [fetched, scanResult] = await Promise.all([
         invoke<AgentWithStatus[]>("get_agents"),
         invoke<ScanResult>("scan_all_skills"),
       ]);
       set((state) => ({
-        agents,
+        allAgents: fetched,
+        agents: visibleAgents(fetched),
         skillsByAgent: scanResult.skills_by_agent,
         isLoading: false,
         scanGeneration: (state.scanGeneration ?? 0) + 1,
@@ -134,7 +148,8 @@ export const usePlatformStore = create<PlatformState>((set) => ({
     set({ isRefreshing: true, error: null });
     if (!isTauriRuntime()) {
       set((state) => ({
-        agents: BROWSER_FIXTURE_AGENTS,
+        allAgents: BROWSER_FIXTURE_AGENTS,
+        agents: visibleAgents(BROWSER_FIXTURE_AGENTS),
         skillsByAgent: BROWSER_FIXTURE_COUNTS.skills_by_agent,
         isRefreshing: false,
         isLoading: state.isLoading,
@@ -143,12 +158,13 @@ export const usePlatformStore = create<PlatformState>((set) => ({
       return;
     }
     try {
-      const [agents, scanResult] = await Promise.all([
+      const [fetched, scanResult] = await Promise.all([
         invoke<AgentWithStatus[]>("get_agents"),
         invoke<ScanResult>("scan_all_skills"),
       ]);
       set((state) => ({
-        agents,
+        allAgents: fetched,
+        agents: visibleAgents(fetched),
         skillsByAgent: scanResult.skills_by_agent,
         isRefreshing: false,
         isLoading: state.isLoading,
@@ -158,4 +174,20 @@ export const usePlatformStore = create<PlatformState>((set) => ({
       set({ error: String(err), isRefreshing: false });
     }
   },
+
+  /**
+   * Recompute the visible agent list from the cached full list after the
+   * platform whitelist changes. Triggered by the settingsStore subscription.
+   */
+  reapplyWhitelist: (whitelist) =>
+    set((state) => ({
+      agents: filterAgentsByWhitelist(state.allAgents, whitelist),
+    })),
 }));
+
+// Keep the visible agent list in sync with the platform whitelist.
+useSettingsStore.subscribe((state, prev) => {
+  if (state.platformWhitelist !== prev.platformWhitelist) {
+    usePlatformStore.getState().reapplyWhitelist(state.platformWhitelist);
+  }
+});

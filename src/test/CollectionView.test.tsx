@@ -132,6 +132,7 @@ function buildCollectionStoreState(overrides = {}) {
 function buildPlatformStoreState(overrides = {}) {
   return {
     agents: mockAgents,
+    allAgents: mockAgents,
     skillsByAgent: {},
     isLoading: false,
     isRefreshing: false,
@@ -139,6 +140,7 @@ function buildPlatformStoreState(overrides = {}) {
     initialize: vi.fn(),
     rescan: vi.fn(),
     refreshCounts: vi.fn(),
+    reapplyWhitelist: vi.fn(),
     ...overrides,
   };
 }

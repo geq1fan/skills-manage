@@ -12,6 +12,8 @@ import {
   DeleteCentralSkillResult,
   SkillWithLinks,
 } from "@/types";
+import { filterAgentsByWhitelist } from "@/lib/agents";
+import { useSettingsStore } from "./settingsStore";
 
 export const BROWSER_FIXTURE_AGENTS: AgentWithStatus[] = [
   {
@@ -64,8 +66,14 @@ export const BROWSER_FIXTURE_BUNDLES: CentralSkillBundle[] = [];
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+/** Derive the visible (whitelist-filtered) agent list from the full list. */
+function visibleAgents(allAgents: AgentWithStatus[]): AgentWithStatus[] {
+  return filterAgentsByWhitelist(allAgents, useSettingsStore.getState().platformWhitelist);
+}
+
 interface CentralSkillsState {
   skills: SkillWithLinks[];
+  allAgents: AgentWithStatus[];
   agents: AgentWithStatus[];
   bundles: CentralSkillBundle[];
   bundleDetail: CentralSkillBundleDetail | null;
@@ -103,12 +111,14 @@ interface CentralSkillsState {
   ) => Promise<DeleteCentralSkillBundleResult>;
   clearBundleDeletePreview: () => void;
   togglePlatformLink: (skillId: string, agentId: string) => Promise<void>;
+  reapplyWhitelist: (whitelist: string[] | null) => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export const useCentralSkillsStore = create<CentralSkillsState>((set, get) => ({
   skills: [],
+  allAgents: [],
   agents: [],
   bundles: [],
   bundleDetail: null,
@@ -131,18 +141,25 @@ export const useCentralSkillsStore = create<CentralSkillsState>((set, get) => ({
     if (!isTauriRuntime()) {
       set({
         skills: BROWSER_FIXTURE_SKILLS,
-        agents: BROWSER_FIXTURE_AGENTS,
+        allAgents: BROWSER_FIXTURE_AGENTS,
+        agents: visibleAgents(BROWSER_FIXTURE_AGENTS),
         bundles: BROWSER_FIXTURE_BUNDLES,
         isLoading: false,
       });
       return;
     }
     try {
-      const [skills, agents] = await Promise.all([
+      const [skills, fetchedAgents] = await Promise.all([
         invoke<SkillWithLinks[]>("get_central_skills"),
         invoke<AgentWithStatus[]>("get_agents"),
       ]);
-      set({ skills: skills ?? [], agents: agents ?? [], isLoading: false });
+      const allAgents = fetchedAgents ?? [];
+      set({
+        skills: skills ?? [],
+        allAgents,
+        agents: visibleAgents(allAgents),
+        isLoading: false,
+      });
     } catch (err) {
       set({ error: String(err), isLoading: false });
     }
@@ -368,4 +385,20 @@ export const useCentralSkillsStore = create<CentralSkillsState>((set, get) => ({
       throw err;
     }
   },
+
+  /**
+   * Recompute the visible agent list from the cached full list after the
+   * platform whitelist changes. Triggered by the settingsStore subscription.
+   */
+  reapplyWhitelist: (whitelist) =>
+    set((state) => ({
+      agents: filterAgentsByWhitelist(state.allAgents, whitelist),
+    })),
 }));
+
+// Keep the visible agent list in sync with the platform whitelist.
+useSettingsStore.subscribe((state, prev) => {
+  if (state.platformWhitelist !== prev.platformWhitelist) {
+    useCentralSkillsStore.getState().reapplyWhitelist(state.platformWhitelist);
+  }
+});

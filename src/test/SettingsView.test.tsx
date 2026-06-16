@@ -90,6 +90,9 @@ function setupMocks({
   loadGitHubPat = vi.fn(),
   saveGitHubPat = vi.fn(),
   clearGitHubPat = vi.fn(),
+  platformWhitelist = [] as string[] | null,
+  loadPlatformWhitelist = vi.fn(),
+  setPlatformWhitelist = vi.fn(),
   rescan = vi.fn(),
   refreshCounts = vi.fn(),
   flavor = "mocha" as const,
@@ -115,6 +118,9 @@ function setupMocks({
       loadGitHubPat,
       saveGitHubPat,
       clearGitHubPat,
+      platformWhitelist,
+      loadPlatformWhitelist,
+      setPlatformWhitelist,
       clearError: vi.fn(),
     })
   );
@@ -122,6 +128,7 @@ function setupMocks({
   vi.mocked(usePlatformStore).mockImplementation((selector) =>
     selector({
       agents,
+      allAgents: agents,
       skillsByAgent: {},
       isLoading: false,
       isRefreshing: false,
@@ -129,6 +136,7 @@ function setupMocks({
       initialize: vi.fn(),
       rescan,
       refreshCounts,
+      reapplyWhitelist: vi.fn(),
     })
   );
 
@@ -360,8 +368,50 @@ describe("SettingsView", () => {
   it("renders custom platform with name and path", () => {
     setupMocks({ agents: [mockBuiltinAgent, mockCustomAgent] });
     renderSettingsView();
-    expect(screen.getByText("QClaw")).toBeTruthy();
+    // Custom platforms appear in both the Custom Platforms card and the
+    // Platform Whitelist selector, so the name may render more than once.
+    expect(screen.getAllByText("QClaw").length).toBeGreaterThan(0);
     expect(screen.getByText("/Users/test/.qclaw/skills/")).toBeTruthy();
+  });
+
+  // ── Platform Whitelist ───────────────────────────────────────────────────
+
+  it("renders the platform whitelist selector with install-target agents", () => {
+    setupMocks({ agents: [mockBuiltinAgent, mockCustomAgent], platformWhitelist: [] });
+    renderSettingsView();
+    expect(screen.getByText("平台白名单")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Claude Code" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "QClaw" })).toBeTruthy();
+    // 0 of 2 selected
+    expect(screen.getByText("已选 0 / 共 2")).toBeTruthy();
+  });
+
+  it("toggles a platform into the whitelist on click", async () => {
+    const setPlatformWhitelist = vi.fn().mockResolvedValue(undefined);
+    setupMocks({
+      agents: [mockBuiltinAgent],
+      platformWhitelist: [],
+      setPlatformWhitelist,
+    });
+    renderSettingsView();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    await waitFor(() => {
+      expect(setPlatformWhitelist).toHaveBeenCalledWith(["claude-code"]);
+    });
+  });
+
+  it("removes a platform from the whitelist when already selected", async () => {
+    const setPlatformWhitelist = vi.fn().mockResolvedValue(undefined);
+    setupMocks({
+      agents: [mockBuiltinAgent],
+      platformWhitelist: ["claude-code"],
+      setPlatformWhitelist,
+    });
+    renderSettingsView();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    await waitFor(() => {
+      expect(setPlatformWhitelist).toHaveBeenCalledWith([]);
+    });
   });
 
   it("shows edit button for custom platforms", () => {

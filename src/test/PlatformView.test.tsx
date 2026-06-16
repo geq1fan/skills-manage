@@ -288,7 +288,7 @@ const mockUseSkillStore = vi.mocked(useSkillStore);
 const mockUseCentralSkillsStore = vi.mocked(useCentralSkillsStore);
 
 function buildPlatformStoreState(overrides = {}) {
-  return {
+  const base = {
     agents: [mockAgent],
     skillsByAgent: { "claude-code": 2 },
     isLoading: false,
@@ -300,6 +300,7 @@ function buildPlatformStoreState(overrides = {}) {
     refreshCounts: mockRefreshCounts,
     ...overrides,
   };
+  return { ...base, allAgents: base.agents, reapplyWhitelist: vi.fn() };
 }
 
 function buildSkillStoreState(overrides = {}) {

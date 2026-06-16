@@ -11,6 +11,8 @@ interface SettingsState {
   githubPat: string;
   isLoadingGitHubPat: boolean;
   isSavingGitHubPat: boolean;
+  /** Platform visibility whitelist. `null` = not loaded (show all); `[]` = show none. */
+  platformWhitelist: string[] | null;
 
   // Actions — scan directories
   loadScanDirectories: () => Promise<void>;
@@ -22,6 +24,10 @@ interface SettingsState {
   loadGitHubPat: () => Promise<void>;
   saveGitHubPat: (value: string) => Promise<void>;
   clearGitHubPat: () => Promise<void>;
+
+  // Actions — platform whitelist
+  loadPlatformWhitelist: () => Promise<void>;
+  setPlatformWhitelist: (ids: string[]) => Promise<void>;
 
   // Actions — custom agents
   addCustomAgent: (config: CustomAgentConfig) => Promise<AgentWithStatus>;
@@ -40,6 +46,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   githubPat: "",
   isLoadingGitHubPat: false,
   isSavingGitHubPat: false,
+  platformWhitelist: null,
 
   // ── Scan Directories ───────────────────────────────────────────────────────
 
@@ -145,6 +152,37 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       });
       throw err;
     }
+  },
+
+  // ── Platform Whitelist ──────────────────────────────────────────────────────
+
+  loadPlatformWhitelist: async () => {
+    try {
+      const raw = await invoke<string | null>("get_setting", {
+        key: "platform_whitelist",
+      });
+      if (!raw) {
+        // First run / unconfigured → show none (explicit opt-in).
+        set({ platformWhitelist: [] });
+        return;
+      }
+      const parsed: unknown = JSON.parse(raw);
+      set({
+        platformWhitelist: Array.isArray(parsed)
+          ? parsed.filter((id): id is string => typeof id === "string")
+          : [],
+      });
+    } catch {
+      set({ platformWhitelist: [] });
+    }
+  },
+
+  setPlatformWhitelist: async (ids: string[]) => {
+    await invoke("set_setting", {
+      key: "platform_whitelist",
+      value: JSON.stringify(ids),
+    });
+    set({ platformWhitelist: ids });
   },
 
   // ── Custom Agents ──────────────────────────────────────────────────────────

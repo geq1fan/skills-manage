@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, Pencil, Loader2, FolderOpen, Cpu, Info, Database, Globe, Palette, Droplets, Bot, ChevronDown, ChevronRight, KeyRound } from "lucide-react";
+import { Plus, Trash2, Pencil, Loader2, FolderOpen, Cpu, Info, Database, Globe, Palette, Droplets, Bot, ChevronDown, ChevronRight, KeyRound, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
+import { isInstallTargetAgent } from "@/lib/agents";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,7 +28,7 @@ import { deriveHomeDir, formatPathForDisplay, joinPathForDisplay } from "@/lib/p
 
 // ─── App constants ────────────────────────────────────────────────────────────
 
-const APP_VERSION = "0.9.1";
+const APP_VERSION = "0.11.0";
 const DB_PATH_FALLBACK = "~/.skillsmanage/db.sqlite";
 
 /** Catppuccin Lavender hex per flavor — used for visual preview dots on flavor buttons (default accent). */
@@ -181,9 +182,11 @@ export function SettingsView() {
   const loadGitHubPat = useSettingsStore((s) => s.loadGitHubPat);
   const saveGitHubPat = useSettingsStore((s) => s.saveGitHubPat);
   const clearGitHubPat = useSettingsStore((s) => s.clearGitHubPat);
+  const platformWhitelist = useSettingsStore((s) => s.platformWhitelist);
+  const loadPlatformWhitelist = useSettingsStore((s) => s.loadPlatformWhitelist);
+  const setPlatformWhitelist = useSettingsStore((s) => s.setPlatformWhitelist);
 
-  const agents = usePlatformStore((s) => s.agents);
-
+  const allAgents = usePlatformStore((s) => s.allAgents);
   const flavor = useThemeStore((s) => s.flavor);
   const setFlavor = useThemeStore((s) => s.setFlavor);
   const accent = useThemeStore((s) => s.accent);
@@ -191,19 +194,20 @@ export function SettingsView() {
   const rescan = usePlatformStore((s) => s.rescan);
   const refreshCounts = usePlatformStore((s) => s.refreshCounts);
 
-  // Custom agents are those that are not built-in.
-  const customAgents = agents.filter((a) => !a.is_builtin);
+  // Custom agents are those that are not built-in. Uses the full list so
+  // platform management is unaffected by the whitelist visibility filter.
+  const customAgents = allAgents.filter((a) => !a.is_builtin);
   const homeDir = useMemo(() => {
     const candidates = [
-      agents.find((agent) => agent.id === "central")?.global_skills_dir,
+      allAgents.find((agent) => agent.id === "central")?.global_skills_dir,
       ...scanDirectories.map((dir) => dir.path),
-      ...agents.map((agent) => agent.global_skills_dir),
+      ...allAgents.map((agent) => agent.global_skills_dir),
     ].filter((candidate): candidate is string => Boolean(candidate));
 
     return candidates
       .map((candidate) => deriveHomeDir(candidate))
       .find((candidate): candidate is string => Boolean(candidate));
-  }, [agents, scanDirectories]);
+  }, [allAgents, scanDirectories]);
   const dbPathDisplay = useMemo(
     () => (homeDir ? joinPathForDisplay(homeDir, ".skillsmanage/db.sqlite") : DB_PATH_FALLBACK),
     [homeDir]
@@ -294,7 +298,8 @@ export function SettingsView() {
   useEffect(() => {
     loadScanDirectories();
     loadGitHubPat();
-  }, [loadScanDirectories, loadGitHubPat]);
+    loadPlatformWhitelist();
+  }, [loadScanDirectories, loadGitHubPat, loadPlatformWhitelist]);
 
   useEffect(() => {
     setGitHubPatInput(githubPat);
@@ -448,6 +453,22 @@ export function SettingsView() {
     }
   }
 
+  // Platforms eligible for the whitelist: all install-target agents.
+  const whitelistAgents = allAgents.filter(isInstallTargetAgent);
+  const whitelistSet = new Set(platformWhitelist ?? []);
+
+  async function handleToggleWhitelist(agentId: string) {
+    const current = platformWhitelist ?? [];
+    const next = current.includes(agentId)
+      ? current.filter((id) => id !== agentId)
+      : [...current, agentId];
+    try {
+      await setPlatformWhitelist(next);
+    } catch (err) {
+      toast.error(String(err));
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -509,7 +530,63 @@ export function SettingsView() {
           </CardContent>
         </Card>
 
-        {/* ── Section 2: GitHub Import Auth ─────────────────────────────── */}
+        {/* ── Section 2: Platform Whitelist ──────────────────────────────── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("settings.platformWhitelist")}</CardTitle>
+            <CardDescription className="mt-1">
+              {t("settings.platformWhitelistDesc")}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="mb-3 text-xs text-muted-foreground">
+              {t("settings.platformWhitelistSelected", {
+                selected: whitelistSet.size,
+                total: whitelistAgents.length,
+              })}
+            </div>
+            {whitelistAgents.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                {t("settings.platformWhitelistEmpty")}
+              </p>
+            ) : (
+              <div className="max-h-80 overflow-auto pr-1">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {whitelistAgents.map((agent) => {
+                    const checked = whitelistSet.has(agent.id);
+                    return (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        onClick={() => handleToggleWhitelist(agent.id)}
+                        aria-pressed={checked}
+                        aria-label={agent.display_name}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-colors cursor-pointer border text-left ${
+                          checked
+                            ? "bg-primary/15 border-primary text-foreground font-medium"
+                            : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:bg-hover-bg/10"
+                        }`}
+                      >
+                        <span
+                          className={`flex items-center justify-center size-4 rounded-sm border shrink-0 ${
+                            checked
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-border"
+                          }`}
+                        >
+                          {checked && <Check className="size-3" />}
+                        </span>
+                        <span className="truncate">{agent.display_name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ── Section 3: GitHub Import Auth ─────────────────────────────── */}
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
