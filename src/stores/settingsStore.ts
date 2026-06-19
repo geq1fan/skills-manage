@@ -29,7 +29,7 @@ interface SettingsState {
   loadPlatformWhitelist: () => Promise<void>;
   setPlatformWhitelist: (ids: string[]) => Promise<void>;
 
-  // Actions — custom agents
+  // Actions — agents
   addCustomAgent: (config: CustomAgentConfig) => Promise<AgentWithStatus>;
   updateCustomAgent: (agentId: string, config: UpdateCustomAgentConfig) => Promise<AgentWithStatus>;
   removeCustomAgent: (agentId: string) => Promise<void>;
@@ -185,7 +185,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ platformWhitelist: ids });
   },
 
-  // ── Custom Agents ──────────────────────────────────────────────────────────
+  // ── Agents ─────────────────────────────────────────────────────────────────
 
   /**
    * Register a new user-defined agent.
@@ -197,7 +197,8 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   /**
-   * Update an existing user-defined agent.
+   * Update an existing agent.
+   * Built-in agents only persist skills directory changes.
    * Returns the updated AgentWithStatus or throws on error.
    */
   updateCustomAgent: async (agentId: string, config: UpdateCustomAgentConfig) => {

@@ -43,7 +43,7 @@ pub struct CustomAgentConfig {
     pub global_skills_dir: String,
 }
 
-/// Payload for updating an existing user-defined agent.
+/// Payload for updating an existing agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateCustomAgentConfig {
     /// Human-readable name shown in the UI.
@@ -176,30 +176,39 @@ pub async fn add_custom_agent_impl(
     Ok(agent_to_with_status(persisted))
 }
 
-/// Update an existing user-defined (non-builtin) agent and return its updated representation.
+/// Update an existing agent and return its updated representation.
+/// Built-in agents only accept `global_skills_dir` changes.
 pub async fn update_custom_agent_impl(
     pool: &DbPool,
     agent_id: &str,
     config: UpdateCustomAgentConfig,
 ) -> Result<AgentWithStatus, String> {
-    if config.display_name.trim().is_empty() {
+    let existing = db::get_agent_by_id(pool, agent_id)
+        .await?
+        .ok_or_else(|| format!("Agent '{}' not found", agent_id))?;
+
+    if !existing.is_builtin && config.display_name.trim().is_empty() {
         return Err("Agent display name cannot be empty".to_string());
     }
     if config.global_skills_dir.trim().is_empty() {
         return Err("Agent global skills directory cannot be empty".to_string());
     }
 
-    let category = config.category.unwrap_or_else(|| "other".to_string());
+    let display_name = if existing.is_builtin {
+        existing.display_name
+    } else {
+        config.display_name.trim().to_string()
+    };
+    let category = if existing.is_builtin {
+        existing.category
+    } else {
+        config.category.unwrap_or_else(|| "other".to_string())
+    };
     let global_skills_dir = path_to_string(&expand_home_path(config.global_skills_dir.trim()));
 
-    let updated = db::update_custom_agent(
-        pool,
-        agent_id,
-        config.display_name.trim(),
-        &category,
-        &global_skills_dir,
-    )
-    .await?;
+    let updated =
+        db::update_custom_agent(pool, agent_id, &display_name, &category, &global_skills_dir)
+            .await?;
 
     Ok(agent_to_with_status(updated))
 }
@@ -232,7 +241,7 @@ pub async fn add_custom_agent(
     add_custom_agent_impl(&state.db, config).await
 }
 
-/// Tauri command: update an existing user-defined agent.
+/// Tauri command: update an existing agent.
 #[tauri::command]
 pub async fn update_custom_agent(
     state: State<'_, AppState>,
@@ -607,17 +616,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_update_builtin_agent_fails() {
+    async fn test_update_builtin_agent_changes_path_only() {
         let pool = setup_test_db().await;
 
+        let before = db::get_agent_by_id(&pool, "claude-code")
+            .await
+            .unwrap()
+            .unwrap();
         let config = UpdateCustomAgentConfig {
             display_name: "Hacked Name".to_string(),
-            category: None,
+            category: Some("lobster".to_string()),
             global_skills_dir: "/tmp/hacked/skills".to_string(),
         };
 
-        let result = update_custom_agent_impl(&pool, "claude-code", config).await;
-        assert!(result.is_err(), "Updating a built-in agent should fail");
+        let updated = update_custom_agent_impl(&pool, "claude-code", config)
+            .await
+            .unwrap();
+        assert_eq!(updated.global_skills_dir, "/tmp/hacked/skills");
+        assert_eq!(updated.display_name, before.display_name);
+        assert_eq!(updated.category, before.category);
+        assert!(updated.is_builtin);
     }
 
     #[tokio::test]

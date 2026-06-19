@@ -437,7 +437,6 @@ async fn seed_builtin_agents(pool: &DbPool) -> Result<(), String> {
              ON CONFLICT(id) DO UPDATE SET
               display_name = excluded.display_name,
               category = excluded.category,
-              global_skills_dir = excluded.global_skills_dir,
               project_skills_dir = excluded.project_skills_dir,
               icon_name = excluded.icon_name",
         )
@@ -1685,8 +1684,9 @@ pub async fn delete_custom_agent(pool: &DbPool, agent_id: &str) -> Result<(), St
     }
 }
 
-/// Update a custom (non-builtin) agent's mutable fields.
-/// Returns the updated agent record, or an error if the agent is builtin or not found.
+/// Update an agent's mutable fields.
+/// Built-in agents only accept `global_skills_dir` changes; their registry
+/// metadata continues to be refreshed from code during database initialization.
 pub async fn update_custom_agent(
     pool: &DbPool,
     agent_id: &str,
@@ -1695,12 +1695,21 @@ pub async fn update_custom_agent(
     global_skills_dir: &str,
 ) -> Result<Agent, String> {
     let agent = get_agent_by_id(pool, agent_id).await?;
-    match agent {
-        None => return Err(format!("Agent '{}' not found", agent_id)),
-        Some(a) if a.is_builtin => {
-            return Err(format!("Cannot update built-in agent '{}'", agent_id))
-        }
-        Some(_) => {}
+    let Some(agent) = agent else {
+        return Err(format!("Agent '{}' not found", agent_id));
+    };
+
+    if agent.is_builtin {
+        sqlx::query("UPDATE agents SET global_skills_dir = ? WHERE id = ?")
+            .bind(global_skills_dir)
+            .bind(agent_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        return get_agent_by_id(pool, agent_id)
+            .await?
+            .ok_or_else(|| "Failed to retrieve updated agent".to_string());
     }
 
     sqlx::query(
@@ -2130,6 +2139,26 @@ mod tests {
         // Calling init_database again should not fail
         let result = init_database(&pool).await;
         assert!(result.is_ok(), "Second init should be idempotent");
+    }
+
+    #[tokio::test]
+    async fn test_init_preserves_builtin_agent_custom_path() {
+        let pool = setup_test_db().await;
+        let custom_path = "/tmp/custom-claude-skills";
+
+        sqlx::query("UPDATE agents SET global_skills_dir = ? WHERE id = 'claude-code'")
+            .bind(custom_path)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        init_database(&pool).await.unwrap();
+
+        let agent = get_agent_by_id(&pool, "claude-code")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(agent.global_skills_dir, custom_path);
     }
 
     #[tokio::test]

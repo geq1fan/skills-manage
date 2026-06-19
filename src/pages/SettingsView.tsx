@@ -119,20 +119,25 @@ function ScanDirectoryRow({ dir, onRemove, onToggle, isRemoving }: ScanDirectory
 
 // ─── CustomPlatformRow ────────────────────────────────────────────────────────
 
-interface CustomPlatformRowProps {
+interface PlatformPathRowProps {
   agent: AgentWithStatus;
   onEdit: () => void;
-  onRemove: () => void;
+  onRemove?: () => void;
   isRemoving: boolean;
 }
 
-function CustomPlatformRow({ agent, onEdit, onRemove, isRemoving }: CustomPlatformRowProps) {
+function PlatformPathRow({ agent, onEdit, onRemove, isRemoving }: PlatformPathRowProps) {
   const { t } = useTranslation();
   return (
     <div className="flex items-center gap-3 py-2.5 px-4 border-b border-border/50 last:border-0">
       <Cpu className="size-4 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{agent.display_name}</div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="text-sm font-medium truncate">{agent.display_name}</div>
+          <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            {agent.is_builtin ? t("settings.builtinPlatform") : t("settings.customPlatform")}
+          </span>
+        </div>
         <div className="text-xs text-muted-foreground truncate mt-0.5">
           {formatPathForDisplay(agent.global_skills_dir)}
         </div>
@@ -147,14 +152,16 @@ function CustomPlatformRow({ agent, onEdit, onRemove, isRemoving }: CustomPlatfo
           <Pencil className="size-3.5" />
           <span>{t("common.edit")}</span>
         </Button>
-        <InlineConfirmAction
-          onConfirm={onRemove}
-          isLoading={isRemoving}
-          idleAriaLabel={t("settings.removePlatformLabel", { name: agent.display_name })}
-          idleTitle={t("settings.removePlatformLabel", { name: agent.display_name })}
-          confirmLabel={t("common.confirmDelete")}
-          icon={<Trash2 className="size-3.5" />}
-        />
+        {!agent.is_builtin && onRemove && (
+          <InlineConfirmAction
+            onConfirm={onRemove}
+            isLoading={isRemoving}
+            idleAriaLabel={t("settings.removePlatformLabel", { name: agent.display_name })}
+            idleTitle={t("settings.removePlatformLabel", { name: agent.display_name })}
+            confirmLabel={t("common.confirmDelete")}
+            icon={<Trash2 className="size-3.5" />}
+          />
+        )}
       </div>
     </div>
   );
@@ -194,9 +201,9 @@ export function SettingsView() {
   const rescan = usePlatformStore((s) => s.rescan);
   const refreshCounts = usePlatformStore((s) => s.refreshCounts);
 
-  // Custom agents are those that are not built-in. Uses the full list so
-  // platform management is unaffected by the whitelist visibility filter.
-  const customAgents = allAgents.filter((a) => !a.is_builtin);
+  // Uses the full list so path management is unaffected by the whitelist
+  // visibility filter. Central and Obsidian are not install targets.
+  const platformAgents = allAgents.filter(isInstallTargetAgent);
   const homeDir = useMemo(() => {
     const candidates = [
       allAgents.find((agent) => agent.id === "central")?.global_skills_dir,
@@ -481,7 +488,7 @@ export function SettingsView() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-6 space-y-6">
 
-        {/* ── Section 1: Custom Platforms ───────────────────────────────────── */}
+        {/* ── Section 1: Agent Skill Paths ──────────────────────────────────── */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -510,18 +517,18 @@ export function SettingsView() {
               </p>
             )}
 
-            {customAgents.length === 0 ? (
+            {platformAgents.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
                 {t("settings.noPlatforms")}
               </p>
             ) : (
               <div className="rounded-lg border border-border overflow-hidden">
-                {customAgents.map((agent) => (
-                  <CustomPlatformRow
+                {platformAgents.map((agent) => (
+                  <PlatformPathRow
                     key={agent.id}
                     agent={agent}
                     onEdit={() => handleOpenEditPlatform(agent)}
-                    onRemove={() => handleRemovePlatform(agent.id)}
+                    onRemove={agent.is_builtin ? undefined : () => handleRemovePlatform(agent.id)}
                     isRemoving={removingAgent === agent.id}
                   />
                 ))}

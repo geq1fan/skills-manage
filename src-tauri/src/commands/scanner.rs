@@ -737,8 +737,8 @@ pub async fn scan_all_skills(state: State<'_, AppState>) -> Result<ScanResult, S
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::linker::create_symlink as symlink;
     use std::fs;
-    use std::os::unix::fs::symlink;
     use tempfile::TempDir;
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1081,7 +1081,7 @@ mod tests {
 
         // Symlink it into the agent skills dir
         let link = skills_dir.join("my-skill");
-        symlink(central_dir.join("my-skill"), &link).unwrap();
+        symlink(&central_dir.join("my-skill"), &link).unwrap();
 
         let skills = scan_directory(&skills_dir, false);
         assert_eq!(skills.len(), 1);
@@ -1142,8 +1142,8 @@ mod tests {
             "using-superpowers",
             &valid_skill_md("Using Superpowers", "Symlinked bundle skill"),
         );
-        symlink(&target, root.join("superpowers")).unwrap();
-        symlink(&root, target.join("loop-back")).unwrap();
+        symlink(&target, &root.join("superpowers")).unwrap();
+        symlink(&root, &target.join("loop-back")).unwrap();
 
         let skills = scan_skill_root(
             &root,

@@ -40,6 +40,7 @@ export function PlatformDialog({
   const { t } = useTranslation();
   const agents = usePlatformStore((state) => state.agents);
   const isEditMode = platform !== null;
+  const isBuiltinEditMode = isEditMode && platform?.is_builtin === true;
   const homeDir = useMemo(() => {
     const candidates = [
       platform?.global_skills_dir,
@@ -99,7 +100,7 @@ export function PlatformDialog({
 
     try {
       if (isEditMode && onEdit) {
-        await onEdit(trimmedName, trimmedDir, category);
+        await onEdit(trimmedName, trimmedDir, isBuiltinEditMode ? platform?.category : category);
       } else if (!isEditMode && onAdd) {
         await onAdd(trimmedName, trimmedDir, category);
       }
@@ -116,14 +117,20 @@ export function PlatformDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isEditMode ? t("platformDialog.editTitle") : t("platformDialog.addTitle")}
+            {isBuiltinEditMode
+              ? t("platformDialog.editBuiltinTitle")
+              : isEditMode
+                ? t("platformDialog.editTitle")
+                : t("platformDialog.addTitle")}
           </DialogTitle>
           <DialogClose />
         </DialogHeader>
 
         <DialogBody className="space-y-4">
           <DialogDescription>
-            {isEditMode
+            {isBuiltinEditMode
+              ? t("platformDialog.editBuiltinDesc")
+              : isEditMode
               ? t("platformDialog.editDesc")
               : t("platformDialog.addDesc")}
           </DialogDescription>
@@ -154,7 +161,10 @@ export function PlatformDialog({
                 }
               }}
               disabled={isSubmitting}
+              readOnly={isBuiltinEditMode}
+              aria-readonly={isBuiltinEditMode}
               autoFocus
+              className={isBuiltinEditMode ? "bg-muted/40 text-muted-foreground" : undefined}
             />
             {nameError && (
               <p className="text-xs text-destructive" role="alert">
@@ -194,28 +204,30 @@ export function PlatformDialog({
           </div>
 
           {/* Category */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">
-              {t("platformDialog.categoryLabel") || "Category"}
-            </label>
-            <div className="flex gap-1.5">
-              {(["coding", "lobster"] as const).map((cat) => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setCategory(cat)}
-                  disabled={isSubmitting}
-                  className={`px-3 py-1.5 rounded-md text-xs transition-colors cursor-pointer border ${
-                    category === cat
-                      ? "bg-primary/15 border-primary text-foreground font-medium"
-                      : "border-border bg-background text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {cat === "coding" ? (t("sidebar.categoryCoding") || "Coding") : (t("sidebar.categoryLobster") || "Lobster")}
-                </button>
-              ))}
+          {!isBuiltinEditMode && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">
+                {t("platformDialog.categoryLabel") || "Category"}
+              </label>
+              <div className="flex gap-1.5">
+                {(["coding", "lobster"] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setCategory(cat)}
+                    disabled={isSubmitting}
+                    className={`px-3 py-1.5 rounded-md text-xs transition-colors cursor-pointer border ${
+                      category === cat
+                        ? "bg-primary/15 border-primary text-foreground font-medium"
+                        : "border-border bg-background text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    {cat === "coding" ? (t("sidebar.categoryCoding") || "Coding") : (t("sidebar.categoryLobster") || "Lobster")}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Backend error */}
           {error && (
